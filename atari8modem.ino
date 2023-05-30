@@ -28,6 +28,10 @@
 
 // Ethernet setup parameters
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+#define MAX_HOST_LENGTH 64
+#define TELNET_PROTOCOL 1
+#define MODEM_CONNECTION_ID 0
+#define TELNET_CONNECTION_ID 1
 
 // AT Command vars 
 char commandBuffer[MAX_COMMAND_LENGTH];
@@ -51,13 +55,18 @@ unsigned long prevCharTime = 0;
 bool modemCommandMode = false; 
 // .. Other necessary variables ..
 
-// Define data structure for Modem and Telnet state
 struct ModemData {
-  // Variables...
+  bool isConnected;
+  char currentHost[MAX_HOST_LENGTH];
+  uint16_t currentPort;
+  // Add other variables relevant to the state of your modem
 };
 
 struct TelnetState {
-  // Variables...
+  bool isNegotiating;
+  bool isOptionOn;
+  uint8_t currentOption;
+  // Add other variables relevant to the state of your telnet session
 };
 
 struct ModemConfig {
@@ -312,6 +321,87 @@ void handleResetCommand() {
   }
 
   SWSer.println("OK");
+}
+
+bool openConnection(uint8_t protocol, uint8_t connectionID, const char* hostAndPort) {
+  // Parse host and port from hostAndPort string
+  char host[MAX_HOST_LENGTH];
+  uint16_t port;
+  sscanf(hostAndPort, "%[^:]:%u", host, &port); // Adjusted sscanf pattern to exclude ':' from the host string
+
+  // Based on protocol and connectionID, open a connection using the appropriate EthernetClient instance
+  if (protocol == TELNET_PROTOCOL) {
+    if (connectionID == MODEM_CONNECTION_ID) {
+      return modemClient.connect(host, port);
+    } else if (connectionID == TELNET_CONNECTION_ID) {
+      return telnetClient.connect(host, port);
+    }
+  }
+  return false;
+}
+
+bool closeConnection(uint8_t connectionID) {
+  // Based on connectionID, close the connection using the appropriate EthernetClient instance
+  if (connectionID == MODEM_CONNECTION_ID) {
+    modemClient.stop();
+    return !modemClient.connected();
+  } else if (connectionID == TELNET_CONNECTION_ID) {
+    telnetClient.stop();
+    return !telnetClient.connected();
+  }
+  return false;
+}
+
+uint8_t readDataFromConnection(uint8_t connectionID, char* buffer, uint8_t length) {
+  // Based on connectionID, read data from the connection using the appropriate EthernetClient instance
+  EthernetClient* client = NULL;
+  if (connectionID == MODEM_CONNECTION_ID) {
+    client = &modemClient;
+  } else if (connectionID == TELNET_CONNECTION_ID) {
+    client = &telnetClient;
+  }
+  
+  if (client && client->available()) {
+    return client->readBytes(buffer, length);
+  }
+  return 0;
+}
+
+bool writeDataToConnection(uint8_t connectionID, const char* buffer, uint8_t length) {
+  // Based on connectionID, write data to the connection using the appropriate EthernetClient instance
+  EthernetClient* client = NULL;
+  if (connectionID == MODEM_CONNECTION_ID) {
+    client = &modemClient;
+  } else if (connectionID == TELNET_CONNECTION_ID) {
+    client = &telnetClient;
+  }
+
+  if (client && client->connected()) {
+    return client->write((uint8_t*)buffer, length) == length;
+  }
+  return false;
+}
+
+uint8_t getDeviceStatus() {
+  // Return the device status. Here we consider a simple status flag indicating if the device is connected to the network
+  return (uint8_t)Ethernet.localIP() != 0; // You may want to consider more specific status like: is IP assigned, is gateway reachable, etc.
+}
+
+uint8_t getConnectionStatus(uint8_t connectionID) {
+  // Return the connection status
+  if (connectionID == MODEM_CONNECTION_ID) {
+    return modemClient.connected() ? 1 : 0;
+  } else if (connectionID == TELNET_CONNECTION_ID) {
+    return telnetClient.connected() ? 1 : 0;
+  }
+  return 0;
+}
+
+void readData(char* buffer, uint8_t length) {
+  // Read the data from the SoftwareSerial instance
+  for (int i = 0; i < length && SWSer.available(); i++) {
+    buffer[i] = SWSer.read();
+  }
 }
 
 void relayModemData() {
