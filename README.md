@@ -1,4 +1,4 @@
-# Adem (ay-dum / ei-dum)
+# Artem 
 ### The no-BS atari 8-bit plug and go ethernet modem.
 
 ## Hardware
