@@ -6,15 +6,35 @@
 // SIO constants
 #define SIO_ACK 0x41
 #define SIO_NAK 0x4E
-#define SIO_COMPLETE 0x43
 #define SIO_ERROR 0x45
+#define SIO_GET_STATUS 0x53
+#define SIO_OPEN 0x4F
+#define SIO_READ 0x52
+#define SIO_WRITE 0x50
+#define SIO_CLOSE 0x43
 
 // Pins for SoftwareSerial
 #define RX_PIN 2
 #define TX_PIN 3
 
+// AT Command buffer
+#define MAX_COMMAND_LENGTH 256
+
+// EEPROM config
+#define EEPROM_MODEM_CONFIG_ADDR 0
+#define MAX_MODEM_INIT_STRING 64
+#define MAX_BANNER_LENGTH 64
+#define MAX_S_REGISTERS 10
+
 // Ethernet setup parameters
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+
+// AT Command vars 
+char commandBuffer[MAX_COMMAND_LENGTH];
+int commandIndex = 0;
+
+// IP resolver instance
+DNSServer dns;
 
 // SoftwareSerial instance
 SoftwareSerial SWSer(RX_PIN, TX_PIN);
@@ -40,9 +60,18 @@ struct TelnetState {
   // Variables...
 };
 
+struct ModemConfig {
+  char modemInitString[MAX_MODEM_INIT_STRING];
+  uint16_t telnetListenPort;
+  char busyBanner[MAX_BANNER_LENGTH];
+  char connectBanner[MAX_BANNER_LENGTH];
+  uint8_t sRegisters[MAX_S_REGISTERS];
+};
+
 ModemData modemData;
 TelnetState modemTelnetState;
 TelnetState clientTelnetState;
+ModemConfig modemConfig;
 
 void setup() {
   // Initialize the Ethernet connection
@@ -70,11 +99,219 @@ void loop() {
 }
 
 void handleSIORequest() {
-  // Handle the SIO request from the Atari
+  // Check if SIO data is available
+  if (SWSer.available() > 0) {
+    // Read the command type byte
+    uint8_t command = SWSer.read();
+
+    // Read the auxiliary bytes
+    uint8_t aux1 = SWSer.read();
+    uint8_t aux2 = SWSer.read();
+
+    switch (command) {
+      case SIO_GET_STATUS:
+        handleSIOGetStatus();
+        break;
+
+      case SIO_OPEN:
+        handleSIOOpen(aux1, aux2);
+        break;
+
+      case SIO_READ:
+        handleSIORead(aux1, aux2);
+        break;
+
+      case SIO_WRITE:
+        handleSIOWrite(aux1, aux2);
+        break;
+
+      case SIO_CLOSE:
+        handleSIOClose(aux1);
+        break;
+
+      default:
+        // Unknown command, send NAK
+        SWSer.write(SIO_NAK);
+        break;
+    }
+  }
 }
 
+void handleSIOGetStatus() {
+  // Get the status of the networking device and all connections
+  uint8_t deviceStatus = getDeviceStatus();
+  uint8_t connectionStatus[4] = {getConnectionStatus(0), getConnectionStatus(1), getConnectionStatus(2), getConnectionStatus(3)};
+  
+  // Send the status data back to the Atari
+  SWSer.write(SIO_ACK);  // Acknowledge receipt of command
+  SWSer.write(connectionStatus, 4);  // Send the connection statuses
+  SWSer.write(deviceStatus);  // Send the device status
+  SWSer.write(SIO_COMPLETE);  // Indicate the end of the command
+}
+
+void handleSIOOpen(uint8_t aux1, uint8_t aux2) {
+  // Extract the protocol and connection ID from aux1
+  uint8_t protocol = aux1 >> 2;
+  uint8_t connectionID = aux1 & 0x03;
+
+  // The rest of the data contains the host and port
+  uint8_t dataLength = aux2 == 0 ? 256 : aux2;
+  char hostAndPort[dataLength + 1];
+  readData(hostAndPort, dataLength);
+
+  // Open the connection
+  if (openConnection(protocol, connectionID, hostAndPort)) {
+    SWSer.write(SIO_ACK);  // Acknowledge successful completion
+  } else {
+    SWSer.write(SIO_NAK);  // Indicate an error occurred
+  }
+
+  SWSer.write(SIO_COMPLETE);  // Indicate the end of the command
+}
+
+void handleSIORead(uint8_t aux1, uint8_t aux2) {
+  // Extract the connection ID from aux1 and read aux2 bytes from it
+  uint8_t connectionID = aux1 & 0x03;
+  uint8_t dataLength = aux2;
+  
+  char buffer[dataLength + 1];
+  uint8_t bytesRead = readDataFromConnection(connectionID, buffer, dataLength);
+  
+  // Send the data back to the Atari
+  SWSer.write(SIO_ACK);  // Acknowledge receipt of command
+  SWSer.write(buffer, bytesRead);  // Send the read data
+  SWSer.write(SIO_COMPLETE);  // Indicate the end of the command
+}
+
+void handleSIOWrite(uint8_t aux1, uint8_t aux2) {
+  // Extract the connection ID from aux1 and write aux2 bytes to it
+  uint8_t connectionID = aux1 & 0x03;
+  uint8_t dataLength = aux2;
+  
+  char buffer[dataLength];
+  readData(buffer, dataLength);  // Read the data to be written from the command
+  
+  if (writeDataToConnection(connectionID, buffer, dataLength)) {
+    SWSer.write(SIO_ACK);  // Acknowledge successful completion
+  } else {
+    SWSer.write(SIO_NAK);  // Indicate an error occurred
+  }
+
+  SWSer.write(SIO_COMPLETE);  // Indicate the end of the command
+}
+
+void handleSIOClose(uint8_t aux1) {
+  // Extract the connection ID from aux1 and close it
+  uint8_t connectionID = aux1 & 0x03;
+  
+  if (closeConnection(connectionID)) {
+    SWSer.write(SIO_ACK);  // Acknowledge successful completion
+  } else {
+    SWSer.write(SIO_NAK);  // Indicate an error occurred
+  }
+
+  SWSer.write(SIO_COMPLETE);  // Indicate the end of the command
+}
+
+
 void handleModemCommand() {
-  // Handle commands coming from the modem
+  // Check if data is available
+  if (SWSer.available() > 0) {
+    // Read the incoming byte
+    char incomingByte = SWSer.read();
+
+    // Check if the byte is a newline or carriage return
+    if (incomingByte == '\n' || incomingByte == '\r') {
+      // Null-terminate the command
+      commandBuffer[commandIndex] = 0;
+
+      // Process the command
+      if (strncmp(commandBuffer, "ATD", 3) == 0) {
+        // Handle dial command
+        handleDialCommand(commandBuffer + 3);
+      } else if (strncmp(commandBuffer, "ATH", 3) == 0) {
+        // Handle hang up command
+        handleHangUpCommand();
+      } else if (strncmp(commandBuffer, "ATS", 3) == 0) {
+        // Handle S register command
+        handleSRegisterCommand(commandBuffer + 3);
+      } else if (strncmp(commandBuffer, "ATZ", 3) == 0) {
+        // Handle reset command
+        handleResetCommand();
+      } else {
+        // Handle unknown command
+        SWSer.println("ERROR");
+      }
+
+      // Clear the command buffer
+      commandIndex = 0;
+    } else {
+      // Add the byte to the command buffer, if it will fit
+      if (commandIndex < MAX_COMMAND_LENGTH - 1) {
+        commandBuffer[commandIndex++] = incomingByte;
+      }
+    }
+  }
+}
+
+void handleDialCommand(const char* serverInfo) {
+  // Dial the specified serverInfo (in this case, it could be IP address or domain name)
+  char serverIP[16];
+  int serverPort = 23; // Default port
+  sscanf(serverInfo, "%15[^:]:%d", serverIP, &serverPort);
+
+  // Resolve domain name if serverIP is not an IP address
+  if (!modemClient.connect(serverIP, serverPort)) {
+    IPAddress resolvedIP;
+    dns.getHostByName(serverIP, resolvedIP);
+    if (!modemClient.connect(resolvedIP, serverPort)) {
+      SWSer.println("NO CARRIER");
+      return;
+    }
+  }
+
+  SWSer.println("CONNECT");
+  modemCommandMode = false;
+}
+
+void handleHangUpCommand() {
+  // Hang up the current connection
+  if (modemClient.connected()) {
+    modemClient.stop();
+    SWSer.println("OK");
+  } else {
+    SWSer.println("ERROR");
+  }
+}
+
+void handleSRegisterCommand(const char* registerInfo) {
+  // Handle setting/getting S register values
+  int registerNumber = 0;
+  int registerValue = 0;
+  sscanf(registerInfo, "%d=%d", &registerNumber, &registerValue);
+
+  // Validate register number
+  if (registerNumber >= 0 && registerNumber < MAX_S_REGISTERS) {
+    setSRegister(registerNumber, registerValue);
+    SWSer.println("OK");
+  } else {
+    SWSer.println("ERROR");
+  }
+}
+
+void handleResetCommand() {
+  // Reset the modem
+  // Disconnect any current connection
+  if (modemClient.connected()) {
+    modemClient.stop();
+  }
+
+  // Reset S registers to their default values
+  for (int i = 0; i < MAX_S_REGISTERS; i++) {
+    setSRegister(i, DEFAULT_S_REGISTER_VALUE);
+  }
+
+  SWSer.println("OK");
 }
 
 void relayModemData() {
@@ -90,5 +327,40 @@ bool handleTelnetProtocol(uint8_t b, EthernetClient &client, TelnetState &telnet
   // Return whether the byte was a telnet protocol command or not
 }
 
+void loadModemConfigFromEEPROM() {
+  EEPROM.get(EEPROM_MODEM_CONFIG_ADDR, modemConfig);
+}
+
+void saveModemConfigToEEPROM() {
+  EEPROM.put(EEPROM_MODEM_CONFIG_ADDR, modemConfig);
+}
+
+void setModemInitString(const char* newInitString) {
+  strncpy(modemConfig.modemInitString, newInitString, MAX_MODEM_INIT_STRING);
+  saveModemConfigToEEPROM();
+}
+
+void setTelnetListenPort(uint16_t newPort) {
+  modemConfig.telnetListenPort = newPort;
+  saveModemConfigToEEPROM();
+}
+
+void setBusyBanner(const char* newBanner) {
+  strncpy(modemConfig.busyBanner, newBanner, MAX_BANNER_LENGTH);
+  saveModemConfigToEEPROM();
+}
+
+void setConnectBanner(const char* newBanner) {
+  strncpy(modemConfig.connectBanner, newBanner, MAX_BANNER_LENGTH);
+  saveModemConfigToEEPROM();
+}
+
+void setSRegister(uint8_t index, uint8_t value) {
+  if (index < MAX_S_REGISTERS) {
+    modemConfig.sRegisters[index] = value;
+    saveModemConfigToEEPROM();
+  }
+  // else: error, index out of range
+}
 // Additional functions as necessary
 
