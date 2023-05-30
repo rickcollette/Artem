@@ -33,3 +33,49 @@ Here is the wiring scheme from Atari SIO to Arduino Uno:
 
 **NOTE:** *No level shifting is in this design yet.  DO NOT CONNECT THIS TO YOUR ATARI.  IT COULD FRY IT. Which would be sad. And kittens will cry. Think of the kittens. The voltage levels of Atari's SIO port are not necessarily 5V tolerant (they claim to be, but like seriously.. would'nt you rather be protected in case?), so you need to use level shifting circuitry to safely connect it to the Arduino Uno. Also, remember to always double-check your connections and make sure the Atari 800XL is powered off before making any connections.*
 
+
+## How the code works
+
+**handleModemCommand():** This function checks if data is available on the serial line, processes incoming commands, and handles them accordingly. It supports several commands like 'ATD' (dial), 'ATH' (hangup), 'ATS' (S register command), and 'ATZ' (reset).
+
+**handleDialCommand():** This function dials to a server (either IP or domain name), resolving the domain name if necessary. If the connection is successful, it sends "CONNECT" over the serial line.
+
+**handleHangUpCommand():** This function hangs up the current connection if the modem client is connected, and then sends "OK" over the serial line.
+
+**handleSRegisterCommand():** This function handles setting/getting S register values.
+
+**handleResetCommand():** This function resets the modem by disconnecting any current connection and resetting S registers to their default values.
+
+**openConnection():** This function opens a connection to a host and port using either the modem client or the telnet client based on the provided protocol and connection ID.
+
+**closeConnection():** This function closes a connection using either the modem client or the telnet client based on the provided connection ID.
+
+**readDataFromConnection():** This function reads data from a connection using either the modem client or the telnet client based on the provided connection ID.
+
+**writeDataToConnection():** This function writes data to a connection using either the modem client or the telnet client based on the provided connection ID.
+
+**getDeviceStatus():** This function returns the status of the device by checking if it has an IP address assigned.
+
+**getConnectionStatus():** This function returns the status of a connection based on the provided connection ID.
+
+**readData():** This function reads data from the SoftwareSerial instance.
+
+**relayModemData():** Placeholder function to relay data from the modem to the Atari.
+
+**relayTelnetData():** Placeholder function to relay data from the telnet client to the Atari.
+
+**handleTelnetProtocol():** Placeholder function to handle the telnet protocol.
+
+**loadModemConfigFromEEPROM():** This function loads the modem configuration from the EEPROM.
+
+**saveModemConfigToEEPROM():** This function saves the modem configuration to the EEPROM.
+
+**setModemInitString():** This function sets the modem initialization string and saves it to EEPROM.
+
+**setTelnetListenPort():** This function sets the telnet listen port and saves it to EEPROM.
+
+**setBusyBanner():** This function sets the busy banner and saves it to EEPROM.
+
+**setConnectBanner():** This function sets the connect banner and saves it to EEPROM.
+
+**setSRegister():** This function sets an S register value and saves it to EEPROM.
