@@ -19,31 +19,17 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 // SoftwareSerial instance
 SoftwareSerial SWSer(RX_PIN, TX_PIN);
 
-// Global variables
-unsigned long prevCharTime = 0;
-bool modemCommandMode = false;
-// .. Other necessary variables ..
-
-#define MAX_S_REGISTERS 10
-#define MAX_MODEM_INIT_STRING 100
-#define MAX_BANNER_LENGTH 50
-
-struct ModemConfig {
-  uint8_t sRegisters[MAX_S_REGISTERS];
-  char modemInitString[MAX_MODEM_INIT_STRING];
-  uint16_t telnetListenPort;
-  char busyBanner[MAX_BANNER_LENGTH];
-  char connectBanner[MAX_BANNER_LENGTH];
-};
-
-ModemConfig modemConfig;
-
 // Ethernet Server instance
-EthernetServer server(modemConfig.telnetListenPort);
+EthernetServer server(23);
 
 // Ethernet Client instances
 EthernetClient modemClient;
 EthernetClient telnetClient;
+
+// Global variables
+unsigned long prevCharTime = 0; 
+bool modemCommandMode = false; 
+// .. Other necessary variables ..
 
 // Define data structure for Modem and Telnet state
 struct ModemData {
@@ -58,15 +44,22 @@ ModemData modemData;
 TelnetState modemTelnetState;
 TelnetState clientTelnetState;
 
-#define EEPROM_MODEM_CONFIG_ADDR 0
-
 void setup() {
   // Initialize the Ethernet connection
+  Ethernet.begin(mac);
+  while (!Ethernet.begin(mac)) {
+    delay(1000); // Wait a second if initialization failed
+  }
 
   // Initialize the SoftwareSerial
-  
+  SWSer.begin(9600);  // replace 9600 with the desired baud rate
+
   // Load configuration from EEPROM
   loadModemConfigFromEEPROM();
+
+  // Initialize the server on the loaded port
+  server = EthernetServer(modemConfig.telnetListenPort);
+  server.begin();
 }
 
 void loop() {
@@ -97,41 +90,5 @@ bool handleTelnetProtocol(uint8_t b, EthernetClient &client, TelnetState &telnet
   // Return whether the byte was a telnet protocol command or not
 }
 
-void loadModemConfigFromEEPROM() {
-  EEPROM.get(EEPROM_MODEM_CONFIG_ADDR, modemConfig);
-}
-
-void saveModemConfigToEEPROM() {
-  EEPROM.put(EEPROM_MODEM_CONFIG_ADDR, modemConfig);
-}
-
-void setModemInitString(const char* newInitString) {
-  strncpy(modemConfig.modemInitString, newInitString, MAX_MODEM_INIT_STRING);
-  saveModemConfigToEEPROM();
-}
-
-void setTelnetListenPort(uint16_t newPort) {
-  modemConfig.telnetListenPort = newPort;
-  saveModemConfigToEEPROM();
-}
-
-void setBusyBanner(const char* newBanner) {
-  strncpy(modemConfig.busyBanner, newBanner, MAX_BANNER_LENGTH);
-  saveModemConfigToEEPROM();
-}
-
-void setConnectBanner(const char* newBanner) {
-  strncpy(modemConfig.connectBanner, newBanner, MAX_BANNER_LENGTH);
-  saveModemConfigToEEPROM();
-}
-
-void setSRegister(uint8_t index, uint8_t value) {
-  if (index < MAX_S_REGISTERS) {
-    modemConfig.sRegisters[index] = value;
-    saveModemConfigToEEPROM();
-  }
-  // else: error, index out of range
-}
-
-// ...and so on for other fields
+// Additional functions as necessary
 
