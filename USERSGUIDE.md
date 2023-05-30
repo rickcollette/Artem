@@ -2,8 +2,6 @@
 
 *<p style="text-align: center;">Version 1.0</p>*
 
-<p style="text-align: center;">
 ![ARTEM_LOGO](images/artem-logo.png)
-</p>
 
 
