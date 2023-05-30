@@ -1,6 +1,8 @@
 # Artem 
 ### The no-BS atari 8-bit plug and go ethernet modem.
 
+![ARTEM_LOGO](images/artem-logo.png)
+
 ## Hardware
 We are using an arduino UNO and the ENC28J60 ethernet board as the initial test base.  Once this is solid, the idea is to start working on a circuit board to decrease cost and size.
 
