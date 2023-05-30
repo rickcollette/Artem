@@ -10,7 +10,7 @@ We are using an arduino UNO and the ENC28J60 ethernet board as the initial test 
 #### Arduino - ENC28J60
 Connect the Ethernet module to the Arduino using the SPI interface.
 
-* Arduino Uno 5V to ENC28J60 VCC
+* Arduino Uno 3.3V to ENC28J60 VCC
 * Arduino Uno GND to ENC28J60 GND
 * Arduino Uno Pin 13 (SCK) to ENC28J60 SCK
 * Arduino Uno Pin 12 (MISO) to ENC28J60 SO
@@ -18,21 +18,27 @@ Connect the Ethernet module to the Arduino using the SPI interface.
 * Arduino Uno Pin 10 (SS) to ENC28J60 CS
 
 
-![Arduino_to_ENC28J60](images/Arduino_to_ENC28J60.png)
-
-
 #### Atari SIO port to Arduino Uno
 Here is the wiring scheme from Atari SIO to Arduino Uno:
 
-* Atari SIO Pin 1 (Data Out) to Arduino Uno digital Pin 2 (with appropriate level shifting)
-* Atari SIO Pin 3 (Data In) to Arduino Uno digital Pin 3 (with appropriate level shifting)
-* Atari SIO Pin 4 (Clock In) to Arduino Uno digital Pin 4 (with appropriate level shifting)
-* Atari SIO Pin 10 (Clock Out) to Arduino Uno digital Pin 5 (with appropriate level shifting)
-* Atari SIO Pin 5 (+5V/Ready) to Arduino Uno digital Pin 6 (with appropriate level shifting)
+* Atari SIO Pin 1 (Data Out) to TXB0104 A1
+* Atari SIO Pin 3 (Data In) to TXB0104 B1
+* Atari SIO Pin 4 (Clock In) to TXB0104 A2
+* Atari SIO Pin 10 (Clock Out) to TXB0104 B2
+* Atari SIO Pin 5 (+5V/Ready) to TXB0104 VCCA, TXB0104 VCCB
 * Atari SIO Pin 6 (Ground) to Arduino Uno GND
+* TXB0104 A3 to Arduino Uno digital Pin 2
+* TXB0104 B3 to Arduino Uno digital Pin 3
+* TXB0104 A4 to Arduino Uno digital Pin 4
+* TXB0104 B4 to Arduino Uno digital Pin 5
 
-**NOTE:** *No level shifting is in this design yet.  DO NOT CONNECT THIS TO YOUR ATARI.  IT COULD FRY IT. Which would be sad. And kittens will cry. Think of the kittens. The voltage levels of Atari's SIO port are not necessarily 5V tolerant (they claim to be, but like seriously.. would'nt you rather be protected in case?), so you need to use level shifting circuitry to safely connect it to the Arduino Uno. Also, remember to always double-check your connections and make sure the Atari 800XL is powered off before making any connections.*
+#### Decoupling Capacitors
+* TXB0104 VCCA to Ground ---- 0.1uF Ceramic Capacitor
+* TXB0104 VCCB to Ground ---- 0.1uF Ceramic Capacitor
 
+**NOTE:** *The connections between the Atari SIO port and the Arduino Uno now specify the use of the TXB0104 bidirectional level shifter. The TXB0104 A1, B1, A2, and B2 pins are connected to the corresponding Atari SIO pins for data and clock signals. The TXB0104 VCCA and VCCB pins are connected to the Atari SIO +5V/Ready pin for power supply.*
+
+*The TXB0104 A3, B3, A4, and B4 pins are connected to the corresponding digital pins on the Arduino Uno for data and clock signals. The decoupling capacitors (0.1uF ceramic capacitors) are added between the TXB0104 VCCA and ground, and between the TXB0104 VCCB and ground to improve stability.*
 
 ## How the code works
 
