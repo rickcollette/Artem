@@ -17,6 +17,7 @@ Connect the Ethernet module to the Arduino using the SPI interface.
 * Arduino Uno Pin 11 (MOSI) to ENC28J60 SI
 * Arduino Uno Pin 10 (SS) to ENC28J60 CS
 
+![Arduino_to_ENC28J60](images/Arduino_to_ENC28J60.png)
 
 #### Atari SIO port to Arduino Uno
 Here is the wiring scheme from Atari SIO to Arduino Uno:
